@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".video_fragment"
+    android:background="#f00"
+    android:id="@+id/video_fragment"
+    >
+<!--    <LinearLayout
+        android:id="@+id/overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        >
+    &lt;!&ndash;latLon alt timer&ndash;&gt;
+    <TableLayout
+        android:id="@+id/tableLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:shrinkColumns="*"
+        >
+        <TableRow >
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/swapContainer"
+                android:layout_width="100dp"
+                android:layout_height="100dp"
+                android:layout_column="0"
+                android:backgroundTint="#303030"
+                app:cardCornerRadius="15dp"
+                app:cardElevation="10dp"
+                android:layout_marginTop="3dp"
+                android:layout_marginStart="3dp"
+                app:strokeColor="#303030"
+                android:layout_marginHorizontal="10dp"
+                android:clickable="true"
+                >
+            </com.google.android.material.card.MaterialCardView>
+        </TableRow>
+    </TableLayout>
+    </LinearLayout>-->
+
+    <org.videolan.libvlc.util.VLCVideoLayout
+        android:id="@+id/videoLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+</FrameLayout>

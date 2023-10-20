@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".VideoActivity">
+    <org.videolan.libvlc.util.VLCVideoLayout
+        android:id="@+id/videoLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginBottom="46dp"
+        />
+    <!--footer-->
+    <TableLayout
+        android:id="@+id/footerLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="#383838"
+        android:shrinkColumns="*"
+        android:stretchColumns="3"
+        android:clickable="true"
+        android:layout_gravity="bottom"
+        >
+        <TableRow
+            android:gravity="center"
+            >
+            <ImageView
+                android:id="@+id/ivRain"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:backgroundTint="#383838"
+                android:contentDescription="location icon"
+                android:src="@drawable/umbrella_24"
+                app:tint="#0e87cc"
+                android:layout_column="0"
+                android:layout_marginHorizontal="10dp"
+                />
+
+            <ImageView
+                android:id="@+id/ivWind"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:backgroundTint="#383838"
+                android:contentDescription="location icon"
+                android:src="@drawable/wind_24"
+                app:tint="#e8e8e8"
+                android:layout_column="1"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="5dp"
+                />
+            <TextView
+                android:id="@+id/tvWind"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="6 Kmh"
+                android:textColor="#fff"
+                android:layout_column="2"
+                android:layout_marginEnd="10dp"
+                />
+
+            <ImageButton
+                android:id="@+id/btnMenuItem"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_column="3"
+                android:layout_gravity="end"
+                android:backgroundTint="#383838"
+                android:contentDescription="menu icon"
+                android:src="@drawable/apps_24"
+                app:tint="#9C0E5D"
+                />
+
+            <ImageView
+                android:id="@+id/ivBatteryStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:backgroundTint="#383838"
+                android:contentDescription="battery icon"
+                android:src="@drawable/battery_24"
+                app:tint="#f00"
+                android:layout_column="4"
+                android:layout_marginStart="90dp"
+                />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:layout_column="5"
+                android:layout_marginEnd="10dp"
+                android:layout_marginStart="5dp"
+                >
+                <TextView
+                    android:id="@+id/tvBatteryVtg"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="top"
+                    android:text="Voltage - 24.00 v"
+                    android:textColor="#e8e8e8"
+                    />
+                <TextView
+                    android:id="@+id/tvBatteryCn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="bottom"
+                    android:text="Current - 15.00 mA"
+                    android:textColor="#e8e8e8"
+                    android:layout_column="1"
+                    />
+            </LinearLayout>
+            <ImageButton
+                android:id="@+id/btnConnection"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:backgroundTint="#383838"
+                android:contentDescription="Connection icon"
+                android:src="@drawable/wifi_24"
+                app:tint="#f00"
+                android:layout_column="6"
+                android:layout_marginStart="10dp"
+                />
+
+            <TextView
+                android:id="@+id/tvSignal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="DRONE 1"
+                android:textColor="#e8e8e8"
+                android:layout_column="7"
+                android:layout_marginStart="5dp"
+                android:layout_marginEnd="10dp"
+                />
+        </TableRow>
+    </TableLayout>
+</FrameLayout>
