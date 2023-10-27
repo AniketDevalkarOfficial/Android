@@ -4,7 +4,9 @@ import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.content.res.AppCompatResources;
 import androidx.appcompat.widget.PopupMenu;
+import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentContainerView;
 import androidx.fragment.app.FragmentManager;
@@ -14,13 +16,24 @@ import android.animation.ArgbEvaluator;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
+import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
+import android.graphics.Point;
 import android.graphics.PorterDuff;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.service.autofill.OnClickAction;
 import android.util.Log;
 import android.view.Gravity;
@@ -29,6 +42,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
+import android.view.animation.Interpolator;
+import android.view.animation.LinearInterpolator;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -42,11 +57,16 @@ import android.widget.Toast;
 import com.google.android.gms.common.internal.TelemetryData;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.LocationSource;
 import com.google.android.gms.maps.MapsInitializer;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.OnMapsSdkInitializedCallback;
+import com.google.android.gms.maps.Projection;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.UiSettings;
+import com.google.android.gms.maps.model.BitmapDescriptor;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
@@ -68,6 +88,7 @@ import io.dronefleet.mavlink.common.CommandInt;
 import io.dronefleet.mavlink.common.CommandLong;
 import io.dronefleet.mavlink.common.GlobalPositionInt;
 import io.dronefleet.mavlink.common.GpsRawInt;
+import io.dronefleet.mavlink.common.HomePosition;
 import io.dronefleet.mavlink.common.LocalPositionNed;
 import io.dronefleet.mavlink.common.MavCmd;
 import io.dronefleet.mavlink.common.MavDoRepositionFlags;
@@ -82,9 +103,10 @@ import io.dronefleet.mavlink.protocol.MavlinkPacket;
 
 
 @RequiresApi(api = Build.VERSION_CODES.Q)
-public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleMap.OnMapClickListener  {//GoogleMap.OnMarkerDragListener
+public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleMap.OnMapClickListener {//GoogleMap.OnMarkerDragListener
     String [] item = {"Guided","Loiter","RTL","Land","Auto","AltHold"};
     Button btn;
+    double distance = 0.00;
     static MainActivity INSTANCE;
     int distanceToWayPoint;
     TextView tvLat,tvLon,tvAlt,tvDwp,tvBatteryVtg,tvBatteryCn,tvGroundSpeed,tvVerticalSpeed,tvYaw,tvDistanceToHome;
@@ -92,7 +114,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     ImageButton btnZoomIn,btnZoomOut,btnConnection;
     MaterialCardView swapContainer;
     Spinner spinner;
-    ImageView blinker,btnUp2,btnDown2,btnLeft2,btnRight2,btnSpinner,btnUp;
+    ImageView blinker,btnUp2,btnDown2,btnLeft2,btnRight2,btnSpinner,btnUp,btnLeft,btnRight;
     CommandLong commandLong;
     String serverIp;
     int serverPort;
@@ -104,12 +126,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     MavlinkPacket mavlinkPacket;
     boolean isArm,isTakeOff,flag;
     private GoogleMap googleMap;
-    double doubleLatitude,doubleLongitude,doubleAltitude,voltage,current;
+    double doubleLatitude,doubleLongitude,doubleAltitude,voltage,current,lt5,ln5,lt6,ln6;
     int intLatitude,intLongitude, intAltitude,lat,lon;
     float alt;
     List<Marker> markerList = new ArrayList<>();
     List<MissionItemInt> wayPointList = new ArrayList<>();
     List<Polyline> polylineList = new ArrayList<>();
+    List<LatLng> latLngList = new ArrayList<>();
     LatLng homeLocation;
     MissionItemInt missionItemInt100;
     MissionItemInt missionItemInt;
@@ -123,6 +146,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     DecimalFormat decimalFormat = new DecimalFormat("0.00");
     CommandInt commandInt;
     int lats,lons;
+    double lt1,ln1,lt2,ln2;
+    float globalAlt = 0.00f;
+    boolean isRunning = false;
+    Marker moveMarker;
+    double d = 0.0;
+    boolean droneFlag;
     @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -157,6 +186,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         tvDistanceToHome = findViewById(R.id.tvDistanceToHome);
         view = findViewById(R.id.map);
         btnUp = findViewById(R.id.btnUp);
+        btnLeft = findViewById(R.id.btnLeft);
+        btnRight = findViewById(R.id.btnRight);
 
 
         ArrayAdapter<String> stringArrayAdapter = new ArrayAdapter<>(MainActivity.this, android.R.layout.simple_spinner_item,item);
@@ -240,12 +271,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             startActivity(intent);
         });
 
-        btnUp.setOnClickListener(new View.OnClickListener() {
+/*        btnUp.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 new Thread(new Reposition()).start();
             }
-        });
+        });*/
+
+
 
 
 
@@ -299,6 +332,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             return true;
         });
 
+        btnLeft.setOnClickListener(view ->{
+            new Thread(new YawReverse()).start();
+        });
+        btnRight.setOnClickListener(view ->{
+            new Thread(new Yaw()).start();
+        });
+
 
 /*        btn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -334,31 +374,70 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     public void onMapReady(@NonNull GoogleMap googleMap) {
         this.googleMap = googleMap;
+
         googleMap.setOnMapClickListener(this);
 //        googleMap.setOnMarkerDragListener(this);
 
         homeLocation = new LatLng(doubleLatitude, doubleLongitude);
 //        Log.d("mapLat",homeLocation.toString());
 
-        markerList.add(markerList.size(),googleMap.addMarker(new MarkerOptions().position(homeLocation)));
+        latLngList.add(homeLocation);
 
+        Bitmap bitmap = getBitmapFromVectorDrawable(this,R.drawable.drone_24);
+//        googleMap.addMarker(new MarkerOptions().position(homeLocation).icon(BitmapDescriptorFactory.fromBitmap(bitmap)));
+        markerList.add(markerList.size(),googleMap.addMarker(new MarkerOptions().position(homeLocation).icon(BitmapDescriptorFactory.fromBitmap(bitmap))));
         missionItemInt = MissionItemInt.builder().frame(MavFrame.MAV_FRAME_GLOBAL_RELATIVE_ALT).command(MavCmd.MAV_CMD_NAV_WAYPOINT).x(intLatitude).y(intLongitude).z(50).seq(wayPointList.size()).autocontinue(0).build();
         wayPointList.add(wayPointList.size(),missionItemInt);
 
         googleMap.moveCamera(CameraUpdateFactory.newLatLng(homeLocation));
 
-        googleMap.animateCamera( CameraUpdateFactory.zoomTo(20));
+        googleMap.animateCamera( CameraUpdateFactory.zoomTo(16));
 
         googleMap.setMapType(GoogleMap.MAP_TYPE_SATELLITE);
     }
 
     @Override
     public void onMapClick(@NonNull LatLng latLng) {
-        Marker marker = googleMap.addMarker(new MarkerOptions().position(latLng));
+        googleMap.clear();
+        Bitmap bitmap = getBitmapFromVectorDrawable(this,R.drawable.drone_24);
+        if(latLngList.size() >= 2){
+            latLngList.remove(latLngList.size()-1);
+        }
+        latLngList.add(latLng);
+
+//        AnimationUtil.animateMarkerTo(googleMap.addMarker(new MarkerOptions().position(homeLocation)),new LatLng(lats,lons));
+
+//        googleMap.addMarker(new MarkerOptions().position(homeLocation).icon(BitmapDescriptorFactory.fromBitmap(bitmap)));
+        googleMap.addMarker(new MarkerOptions().position(latLng));
         lats = (int) (latLng.latitude*1E7);
         lons = (int) (latLng.longitude*1E7);
-//        Log.d("lttlonn",lt+" "+ln);
+
+
+        lt5 = latLng.latitude;
+        ln5 = latLng.longitude;
+
+        new Thread(new Reposition()).start();
+        animateMarker();
+/*       int i = 1;
+        while(i<=10){
+            setMarker(new LatLng(doubleLatitude,doubleLongitude));
+            i++;
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }*/
+//        Log.d("l5",lt5+" "+ln5);
+
+
+//        Log.d("lttlonn",lt2+" "+ln2);
     }
+
+
+
+
+
 
 
 
@@ -479,13 +558,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 if(isConnect){
                     socket = null;
                     isMainThread = false;
+                    isRunning = false;
                     inputStream.close();
                     outputStream.close();
+                    droneFlag = false;
                 }else{
                     socket = new Socket(serverIp, serverPort);
                     inputStream = socket.getInputStream();
                     outputStream = socket.getOutputStream();
                     isMainThread = true;
+                    isRunning = true;
+                    droneFlag = true;
                 }
                 isConnect = !isConnect;
 
@@ -494,9 +577,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 mavlinkConnection = MavlinkConnection.create(inputStream, outputStream);
                 isArm = true;
 
+                CommandLong cmdLong = CommandLong.builder().command(MavCmd.MAV_CMD_RUN_PREARM_CHECKS).build();
+                mavlinkConnection.send2(0,0,cmdLong);
+
                 //read InputStream
                 while ((mavlinkMessage = mavlinkConnection.next()) != null) {
 
+//                            Log.d("msg",mavlinkMessage.getPayload().toString());
 //                    clone mavlink packet into rawBytes
                     byte[] arr = mavlinkMessage.getRawBytes();
 
@@ -505,11 +592,36 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 //                   Object object =  mavlinkMessage.getPayload();
 //                   Log.d("object",object.toString());
 
-                    if(mavlinkPacket.getMessageId()==75 || mavlinkPacket.getMessageId()==76 || mavlinkPacket.getMessageId()==77 || mavlinkPacket.getMessageId()==47 || mavlinkPacket.getMessageId()==73 || mavlinkPacket.getMessageId()==32 || mavlinkPacket.getMessageId()==64 || mavlinkPacket.getMessageId()==89|| mavlinkPacket.getMessageId()==86 || mavlinkPacket.getMessageId()==84 || mavlinkPacket.getMessageId()==48||mavlinkPacket.getMessageId()==33||mavlinkPacket.getMessageId()==63){
-                        Object obj = mavlinkMessage.getPayload();
-                        Log.d("obj",obj.toString());
+
+                    if(mavlinkPacket.getMessageId() == 77){
+//                        Log.d("ack",mavlinkMessage.getPayload().toString());
                     }
 
+
+
+                    if(mavlinkPacket.getMessageId()==242 ){
+                        HomePosition homePosition = (HomePosition) mavlinkMessage.getPayload();
+//                        Log.d("obj",homePosition.toString());
+                        lt1 = homePosition.latitude()*1E-7;
+                        ln1 = homePosition.longitude()*1E-7;
+//                        Log.d("lt11",lt1+"  "+ln1);
+                    }
+
+
+                    if(mavlinkPacket.getMessageId() == 33){
+                        GlobalPositionInt globalPositionInt = (GlobalPositionInt) mavlinkMessage.getPayload();
+                        lt2 = globalPositionInt.lat()*1E-7;
+                        ln2 = globalPositionInt.lon()*1E-7;
+                        globalAlt = (float) (globalPositionInt.alt()*1E-3);
+//                        Log.d("globalAlt", String.valueOf(globalAlt));
+
+//                        Log.d("globalPositionInt",globalPositionInt.toString());
+//                        Log.d("lt22",lt2+"  "+ln2);
+
+                     /*   runOnUiThread(() -> {
+                            tvDistanceToHome.setText(String.format("%.2f",Math.abs(distance)));
+                        });*/
+                    }
 
 
 
@@ -537,20 +649,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
                 if(mavlinkPacket.getMessageId()==32){
                     LocalPositionNed localPositionNed = (LocalPositionNed) mavlinkMessage.getPayload();
+//                    Log.d("localPosition",localPositionNed.toString());
+
+
                     alt =  localPositionNed.z();
-//                    Log.d("add", String.valueOf(Math.round(alt)+Math.round(altError)));
                     float verticalSpeed = localPositionNed.vz()*-1;
                     float groundSpeed = localPositionNed.vx();
-                    float distanceToHome = localPositionNed.x();
                     runOnUiThread(()->{
                         tvAlt.setText(String.format("%.2f",Math.abs(alt))+" m");
                         tvVerticalSpeed.setText(String.format("%.2f",verticalSpeed)+" m/s");
                         tvGroundSpeed.setText(String.format("%.2f",Math.abs(groundSpeed))+" m/s");
-                        tvDistanceToHome.setText(String.format("%.2f",Math.abs(distanceToHome)));
                     });
                     }
                 if(mavlinkPacket.getMessageId() == 33){
                     GlobalPositionInt globalPositionInt = (GlobalPositionInt) mavlinkMessage.getPayload();
+
+                   int globalLat = globalPositionInt.lat();
+                   int globalLon = globalPositionInt.lon();
                     double yaw = globalPositionInt.hdg() * 1E-2;
                     runOnUiThread(() -> {
                         tvYaw.setText(String.format("%.2f",yaw));
@@ -575,16 +690,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
 //        ARMDISARM CLASS
     class ArmDisarm implements Runnable {
+        CommandInt cmdInt;
         @Override
         public void run() {
             try {
                 if(isArm) {
+                    commandLong = CommandLong.builder().command(MavCmd.MAV_CMD_RUN_PREARM_CHECKS).build();
+                    mavlinkConnection.send2(0, 0, commandLong);
                     commandLong = CommandLong.builder().targetSystem(0).targetComponent(0).command(MavCmd.MAV_CMD_COMPONENT_ARM_DISARM).confirmation(0).param1(1).param2(21196).build();
                     mavlinkConnection.send2(0, 0, commandLong);
                     btnArmDisarm.setAlpha(1.0f);
                     isArm = false;
                     isTakeOff = true;
+
                 }else{
+                    commandLong = CommandLong.builder().command(MavCmd.MAV_CMD_RUN_PREARM_CHECKS).build();
+                    mavlinkConnection.send2(0, 0, commandLong);
                     commandLong = CommandLong.builder().targetSystem(0).targetComponent(0).command(MavCmd.MAV_CMD_COMPONENT_ARM_DISARM).confirmation(0).param1(0).param2(21196).build();
                     mavlinkConnection.send2(0, 0, commandLong);
                     btnArmDisarm.setAlpha(0.7f);
@@ -604,7 +725,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         public void run() {
             try {
                 if(isTakeOff) {
-                    commandLong = CommandLong.builder().command(MavCmd.MAV_CMD_NAV_TAKEOFF).param7(20).build();
+                    commandLong = CommandLong.builder().command(MavCmd.MAV_CMD_NAV_TAKEOFF).param7(5).build();
                     mavlinkConnection.send2(0, 0, commandLong);
                     btnTakeOff.setAlpha(1.0f);
                     isTakeOff = false;
@@ -702,7 +823,7 @@ class Mission implements Runnable{
 
         @Override
         public void run() {
-            SetPositionTargetLocalNed cmd = SetPositionTargetLocalNed.builder().coordinateFrame(MavFrame.MAV_FRAME_LOCAL_OFFSET_NED).vx(-0.1f).build();
+            SetPositionTargetLocalNed cmd = SetPositionTargetLocalNed.builder().coordinateFrame(MavFrame.MAV_FRAME_LOCAL_OFFSET_NED).vx(-1f).build();
             try {
                 mavlinkConnection.send2(0, 0, cmd);
             } catch (IOException e) {
@@ -715,7 +836,7 @@ class Mission implements Runnable{
 
         @Override
         public void run() {
-            SetPositionTargetLocalNed cmd = SetPositionTargetLocalNed.builder().coordinateFrame(MavFrame.MAV_FRAME_LOCAL_OFFSET_NED).vy(-0.1f).build();
+            SetPositionTargetLocalNed cmd = SetPositionTargetLocalNed.builder().coordinateFrame(MavFrame.MAV_FRAME_LOCAL_OFFSET_NED).vy(-1f).build();
             try {
                 mavlinkConnection.send2(0, 0, cmd);
             } catch (IOException e) {
@@ -728,7 +849,7 @@ class Mission implements Runnable{
 
         @Override
         public void run() {
-            SetPositionTargetLocalNed cmd = SetPositionTargetLocalNed.builder().coordinateFrame(MavFrame.MAV_FRAME_LOCAL_OFFSET_NED).vy(0.1f).build();
+            SetPositionTargetLocalNed cmd = SetPositionTargetLocalNed.builder().coordinateFrame(MavFrame.MAV_FRAME_LOCAL_OFFSET_NED).vy(1f).build();
             try {
                 mavlinkConnection.send2(0, 0, cmd);
             } catch (IOException e) {
@@ -738,27 +859,158 @@ class Mission implements Runnable{
     }
 
     class Reposition implements Runnable{
-        CommandInt command = CommandInt.builder().command(MavCmd.MAV_CMD_NAV_GUIDED_ENABLE).param1(1).build();
-        CommandInt command2 = CommandInt.builder().command(MavCmd.MAV_CMD_NAV_FOLLOW).param2(10).x(lats).y(lons).z(50).build();
-        CommandInt command3 = CommandInt.builder().command(MavCmd.MAV_CMD_NAV_CONTINUE_AND_CHANGE_ALT).z(20).param1(2).build();
-        CommandInt command4 = CommandInt.builder().command(MavCmd.MAV_CMD_DO_PAUSE_CONTINUE).param1(1).build();
-        CommandInt command5 = CommandInt.builder().command(MavCmd.MAV_CMD_GUIDED_CHANGE_ALTITUDE).param1(1).build();
-        CommandInt command6 = CommandInt.builder().command(MavCmd.MAV_CMD_CONDITION_DISTANCE).param1(distanceToWayPoint).build();
+        CommandInt command2 = CommandInt.builder().command(MavCmd.MAV_CMD_DO_REPOSITION).x(lats).y(lons).z(globalAlt).build();
 
-        SetPositionTargetGlobalInt setPositionTargetGlobalInt =SetPositionTargetGlobalInt.builder().coordinateFrame(MavFrame.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT).latInt(lats).lonInt(lons).alt(30).build();
-
+        SetPositionTargetGlobalInt setPositionTargetGlobalInt = SetPositionTargetGlobalInt.builder().coordinateFrame(MavFrame.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT).latInt(lats).lonInt(lons).alt(30).build();
         @Override
         public void run() {
             try {
+
 //                mavlinkConnection.send2(0,0,command);
 //                Thread.sleep(1000);
 //                mavlinkConnection.send2(0,0,command3);
 //                mavlinkConnection.send2(0,0,command6);
                 mavlinkConnection.send2(0,0,command2);
-                Thread.sleep(1000);
-            } catch (IOException | InterruptedException e) {
+
+                new Thread(new Move()).start();
+
+
+                DecimalFormat df = new DecimalFormat("##.######");
+
+                String  zz = df.format(lt5);
+                String zz1 = df.format(lt2);
+
+
+           /*     while(!(zz.equals(zz1))){
+                    distance = org.apache.lucene.util.SloppyMath.haversinMeters(lt1,ln1,lt2,ln2);
+                    String strDistance = decimalFormat.format(distance);
+
+//                    Log.d("lts1",ln2+" "+lt2);
+                     zz = df.format(lt5);
+                     zz1 = df.format(lt2);
+                               runOnUiThread(() -> {
+                            tvDistanceToHome.setText(strDistance);
+                        });
+//                    Log.d("distance", strDistance);
+                }*/
+            } catch (IOException  e) {
                 throw new RuntimeException(e);
             }
         }
+    }
+
+
+
+    class Yaw implements Runnable{
+        @Override
+        public void run() {
+            SetPositionTargetLocalNed cmd = SetPositionTargetLocalNed.builder().coordinateFrame(MavFrame.MAV_FRAME_LOCAL_OFFSET_NED).yaw(0.7854f).build();
+            try {
+                mavlinkConnection.send2(0, 0, cmd);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+    class YawReverse implements Runnable{
+        @Override
+        public void run() {
+            SetPositionTargetLocalNed cmd = SetPositionTargetLocalNed.builder().coordinateFrame(MavFrame.MAV_FRAME_LOCAL_OFFSET_NED).yawRate(-0.7854f).build();
+            try {
+                mavlinkConnection.send2(0, 0, cmd);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    class SendCommands implements  Runnable{
+        @Override
+        public void run() {
+            commandLong = CommandLong.builder().command(MavCmd.MAV_CMD_RUN_PREARM_CHECKS).build();
+                try {
+                    while(true) {
+                        mavlinkConnection.send2(0, 0, commandLong);
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+        }
+    }
+
+    public static Bitmap getBitmapFromVectorDrawable(Context context, int drawableId) {
+        Drawable drawable =  AppCompatResources.getDrawable(context, drawableId);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            drawable = (DrawableCompat.wrap(drawable)).mutate();
+        }
+        Bitmap bitmap = Bitmap.createBitmap(drawable.getIntrinsicWidth(),
+                drawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+        drawable.setTint(Color.WHITE);
+        drawable.draw(canvas);
+        return bitmap;
+    }
+
+    public void setMarker(LatLng latLng){
+        Bitmap bitmap = getBitmapFromVectorDrawable(this,R.drawable.drone_24);
+        if(moveMarker == null){
+            MarkerOptions markerOptions = new MarkerOptions();
+            markerOptions.position(latLng).icon(BitmapDescriptorFactory.fromBitmap(bitmap));
+            moveMarker = googleMap.addMarker(markerOptions);
+            Log.d("add null","null marker");
+            Log.d(" null",latLng.toString());
+            googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng,18));
+        }
+        else{
+            MarkerOptions markerOptions = new MarkerOptions();
+            markerOptions.position(latLng).icon(BitmapDescriptorFactory.fromBitmap(bitmap));
+            moveMarker = googleMap.addMarker(markerOptions);
+            googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng,18));
+            Log.d("add null"," not null marker");
+            Log.d("not null",latLng.toString());
+        }
+    }
+
+    class Move implements Runnable{
+
+        @Override
+        public void run() {
+            Log.d("move","movethread");
+//            setMarker(new LatLng(doubleLatitude,doubleLongitude));
+            /*       int i = 1;
+        while(i<=10){
+            setMarker(new LatLng(doubleLatitude,doubleLongitude));
+            i++;
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }*/
+        }
+    }
+
+
+
+
+    /*Animate marker*/
+    public void animateMarker() {
+        Bitmap bitmap = getBitmapFromVectorDrawable(this,R.drawable.drone_24);
+        final Handler handler = new Handler();
+
+        // Use first point in list as start.
+        final Marker marker = googleMap.addMarker(new MarkerOptions()
+                .position(homeLocation).icon(BitmapDescriptorFactory.fromBitmap(bitmap)));
+
+        handler.post(new Runnable() {
+            @Override
+            public void run() {
+                double lat = doubleLatitude;
+                double lng = doubleLongitude;
+                marker.setPosition(new LatLng(lat, lng));
+                handler.postDelayed(this, 1);
+            }
+        });
     }
 }
