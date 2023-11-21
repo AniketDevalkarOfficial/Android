@@ -84,6 +84,7 @@ import java.util.List;
 
 import io.dronefleet.mavlink.MavlinkConnection;
 import io.dronefleet.mavlink.MavlinkMessage;
+import io.dronefleet.mavlink.common.CommandAck;
 import io.dronefleet.mavlink.common.CommandInt;
 import io.dronefleet.mavlink.common.CommandLong;
 import io.dronefleet.mavlink.common.GlobalPositionInt;
@@ -91,6 +92,7 @@ import io.dronefleet.mavlink.common.GpsRawInt;
 import io.dronefleet.mavlink.common.HomePosition;
 import io.dronefleet.mavlink.common.LocalPositionNed;
 import io.dronefleet.mavlink.common.MavCmd;
+import io.dronefleet.mavlink.common.MavCmdAck;
 import io.dronefleet.mavlink.common.MavDoRepositionFlags;
 import io.dronefleet.mavlink.common.MavFrame;
 import io.dronefleet.mavlink.common.MissionCount;
@@ -152,6 +154,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     Marker moveMarker;
     double d = 0.0;
     boolean droneFlag;
+    int cmdOrdinal,resultOrdinal;
+    boolean armFlag;
     @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -219,22 +223,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         //Connection Button
         btnConnection.setTag(0);
-        btnConnection.setOnClickListener(view -> {
-            final int status = (Integer)view.getTag();
-            switch(status){
-                case 0:
-                    btnConnection.setImageTintList(ColorStateList.valueOf(Color.GREEN));
-                    blinker.setBackgroundColor(Color.GREEN);
-                    manageBlinkEffect(blinker);
-                    view.setTag(1);
-                    break;
-                case 1:
-                    btnConnection.setImageTintList(ColorStateList.valueOf(Color.RED));
-                    blinker.clearAnimation();
-                    blinker.setBackgroundColor(Color.RED);
-                    view.setTag(0);
-                    break;
-            }
+            btnConnection.setOnClickListener(view -> {
+                final int status = (Integer)view.getTag();
+                switch(status){
+                    case 0:
+                        btnConnection.setImageTintList(ColorStateList.valueOf(Color.GREEN));
+                        blinker.setBackgroundColor(Color.GREEN);
+                        manageBlinkEffect(blinker);
+                        view.setTag(1);
+                        break;
+                    case 1:
+                        btnConnection.setImageTintList(ColorStateList.valueOf(Color.RED));
+                        blinker.clearAnimation();
+                        blinker.setBackgroundColor(Color.RED);
+                        view.setTag(0);
+                        break;
+                }
             new Thread(new Connection()).start();
             try {
                 Thread.sleep(1000);
@@ -265,10 +269,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             googleMap.animateCamera(CameraUpdateFactory.zoomOut());
         });
         swapContainer.setOnClickListener(view -> {
-           /* overlay.setVisibility(View.INVISIBLE);
-           getSupportFragmentManager().beginTransaction().replace(R.id.map, new video_fragment()).commit();*/
-            Intent intent = new Intent(this, VideoActivity.class);
-            startActivity(intent);
+//            overlay.setVisibility(View.INVISIBLE);
+           getSupportFragmentManager().beginTransaction().replace(R.id.map, new video_fragment()).commit();
+          /*  Intent intent = new Intent(this, VideoActivity.class);
+            startActivity(intent);*/
         });
 
 /*        btnUp.setOnClickListener(new View.OnClickListener() {
@@ -580,6 +584,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 CommandLong cmdLong = CommandLong.builder().command(MavCmd.MAV_CMD_RUN_PREARM_CHECKS).build();
                 mavlinkConnection.send2(0,0,cmdLong);
 
+                runOnUiThread(() -> {
+                    if(cmdOrdinal==401&&resultOrdinal==0){
+                        btnArmDisarm.setAlpha(0.7f);
+                    }else{
+                        btnArmDisarm.setAlpha(1.0f);
+                    }
+                });
+
                 //read InputStream
                 while ((mavlinkMessage = mavlinkConnection.next()) != null) {
 
@@ -589,11 +601,19 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
 //                    create a MavlinkPacket
                     mavlinkPacket = MavlinkPacket.fromV2Bytes(arr);
+
+
+                    Log.d("mavlinkPacket",mavlinkPacket.toString());
+
 //                   Object object =  mavlinkMessage.getPayload();
 //                   Log.d("object",object.toString());
 
 
                     if(mavlinkPacket.getMessageId() == 77){
+                        CommandAck commandAck = (CommandAck) mavlinkMessage.getPayload();
+                         cmdOrdinal = commandAck.command().value();
+                         resultOrdinal = commandAck.result().value();
+//                        Log.d("cmdres",cmdOrdinal+" "+resultOrdinal);
 //                        Log.d("ack",mavlinkMessage.getPayload().toString());
                     }
 
@@ -694,23 +714,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         @Override
         public void run() {
             try {
-                if(isArm) {
-                    commandLong = CommandLong.builder().command(MavCmd.MAV_CMD_RUN_PREARM_CHECKS).build();
-                    mavlinkConnection.send2(0, 0, commandLong);
+                if(cmdOrdinal==401 && resultOrdinal==0) {
                     commandLong = CommandLong.builder().targetSystem(0).targetComponent(0).command(MavCmd.MAV_CMD_COMPONENT_ARM_DISARM).confirmation(0).param1(1).param2(21196).build();
                     mavlinkConnection.send2(0, 0, commandLong);
                     btnArmDisarm.setAlpha(1.0f);
-                    isArm = false;
-                    isTakeOff = true;
+                    isArm = true;
+//                    Log.d("inside if","inside if");
 
-                }else{
-                    commandLong = CommandLong.builder().command(MavCmd.MAV_CMD_RUN_PREARM_CHECKS).build();
-                    mavlinkConnection.send2(0, 0, commandLong);
+
+                } else {
+//                    commandLong = CommandLong.builder().command(MavCmd.MAV_CMD_RUN_PREARM_CHECKS).build();
+//                    mavlinkConnection.send2(0, 0, commandLong);
                     commandLong = CommandLong.builder().targetSystem(0).targetComponent(0).command(MavCmd.MAV_CMD_COMPONENT_ARM_DISARM).confirmation(0).param1(0).param2(21196).build();
                     mavlinkConnection.send2(0, 0, commandLong);
                     btnArmDisarm.setAlpha(0.7f);
-                    isArm = true;
+                    isArm = false;
+                    isTakeOff = true;
+//                    Log.d("inside else","inside else");
                 }
+                commandLong = CommandLong.builder().command(MavCmd.MAV_CMD_RUN_PREARM_CHECKS).build();
+                mavlinkConnection.send2(0, 0, commandLong);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -724,7 +747,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         @Override
         public void run() {
             try {
-                if(isTakeOff) {
+                if(cmdOrdinal == 401 && resultOrdinal == 1) {
                     commandLong = CommandLong.builder().command(MavCmd.MAV_CMD_NAV_TAKEOFF).param7(5).build();
                     mavlinkConnection.send2(0, 0, commandLong);
                     btnTakeOff.setAlpha(1.0f);
@@ -760,6 +783,7 @@ class Mission implements Runnable{
                 throw new RuntimeException(e);
             }
         }
+
     }
 }
     class ModesChange implements Runnable {
@@ -872,8 +896,6 @@ class Mission implements Runnable{
 //                mavlinkConnection.send2(0,0,command6);
                 mavlinkConnection.send2(0,0,command2);
 
-                new Thread(new Move()).start();
-
 
                 DecimalFormat df = new DecimalFormat("##.######");
 
@@ -958,8 +980,8 @@ class Mission implements Runnable{
             MarkerOptions markerOptions = new MarkerOptions();
             markerOptions.position(latLng).icon(BitmapDescriptorFactory.fromBitmap(bitmap));
             moveMarker = googleMap.addMarker(markerOptions);
-            Log.d("add null","null marker");
-            Log.d(" null",latLng.toString());
+//            Log.d("add null","null marker");
+//            Log.d(" null",latLng.toString());
             googleMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng,18));
         }
         else{
@@ -967,32 +989,10 @@ class Mission implements Runnable{
             markerOptions.position(latLng).icon(BitmapDescriptorFactory.fromBitmap(bitmap));
             moveMarker = googleMap.addMarker(markerOptions);
             googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng,18));
-            Log.d("add null"," not null marker");
-            Log.d("not null",latLng.toString());
+//            Log.d("add null"," not null marker");
+//            Log.d("not null",latLng.toString());
         }
     }
-
-    class Move implements Runnable{
-
-        @Override
-        public void run() {
-            Log.d("move","movethread");
-//            setMarker(new LatLng(doubleLatitude,doubleLongitude));
-            /*       int i = 1;
-        while(i<=10){
-            setMarker(new LatLng(doubleLatitude,doubleLongitude));
-            i++;
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }*/
-        }
-    }
-
-
-
 
     /*Animate marker*/
     public void animateMarker() {
